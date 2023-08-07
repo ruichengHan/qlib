@@ -139,7 +139,7 @@ This table demonstrates the supported Python version of `Qlib`:
 | Python 3.9    | :x:                   | :heavy_check_mark:   | :x: |
 
 **Note**: 
-1. **Conda** is suggested for managing your Python environment.
+1. **Conda** is suggested for managing your Python environment. In some cases, using Python outside of a `conda` environment may result in missing header files, causing the installation failure of certain packages.
 1. Please pay attention that installing cython in Python 3.6 will raise some error when installing ``Qlib`` from source. If users use Python 3.6 on their machines, it is recommended to *upgrade* Python to version 3.7 or use `conda`'s Python to install ``Qlib`` from source.
 1. For Python 3.9, `Qlib` supports running workflows such as training models, doing backtest and plot most of the related figures (those included in [notebook](examples/workflow_by_code.ipynb)). However, plotting for the *model performance* is not supported for now and we will fix this when the dependent packages are upgraded in the future.
 1. `Qlib`Requires `tables` package, `hdf5` in tables does not support python3.9. 
@@ -360,7 +360,7 @@ Here is a list of models built on `Qlib`.
 
 Your PR of new Quant models is highly welcomed.
 
-The performance of each model on the `Alpha158` and `Alpha360` dataset can be found [here](examples/benchmarks/README.md).
+The performance of each model on the `Alpha158` and `Alpha360` datasets can be found [here](examples/benchmarks/README.md).
 
 ### Run a single model
 All the models listed above are runnable with ``Qlib``. Users can find the config files we provide and some details about the model through the [benchmarks](examples/benchmarks) folder. More information can be retrieved at the model files listed above.
