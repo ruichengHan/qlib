@@ -26,6 +26,7 @@ sys.path.append(str(CUR_DIR.parent.parent))
 from dump_bin import DumpDataUpdate
 
 from data_collector.base import BaseCollector, BaseNormalize, BaseRun, Normalize
+from data_collector.yahoo.collector import YahooNormalizeCN1dExtend, YahooNormalize1d
 from data_collector.base import BaseRun, Normalize
 from data_collector.utils import (
     deco_retry,
@@ -38,6 +39,11 @@ from data_collector.utils import (
 )
 
 INDEX_BENCH_URL = "http://push2his.eastmoney.com/api/qt/stock/kline/get?secid=1.{index_code}&fields1=f1%2Cf2%2Cf3%2Cf4%2Cf5&fields2=f51%2Cf52%2Cf53%2Cf54%2Cf55%2Cf56%2Cf57%2Cf58&klt=101&fqt=0&beg={begin}&end={end}"
+
+
+class AkNormalizeCN1dExtend(YahooNormalizeCN1dExtend):
+    pass
+
 
 
 class AKCollector(BaseCollector):
@@ -168,19 +174,6 @@ class AKCollector(BaseCollector):
                 _result = _get_simple(start_datetime, end_datetime)
             except ValueError as e:
                 pass
-        elif interval == self.INTERVAL_1min:
-            _res = []
-            _start = self.start_datetime
-            while _start < self.end_datetime:
-                _tmp_end = min(_start + pd.Timedelta(days=7), self.end_datetime)
-                try:
-                    _resp = _get_simple(_start, _tmp_end)
-                    _res.append(_resp)
-                except ValueError as e:
-                    pass
-                _start = _tmp_end
-            if _res:
-                _result = pd.concat(_res, sort=False).sort_values(["symbol", "date"])
         else:
             raise ValueError(f"cannot support {self.interval}")
         return pd.DataFrame() if _result is None else _result
@@ -199,7 +192,23 @@ class AKCollector(BaseCollector):
 class AKCollectorCN(AKCollector, ABC):
     def get_instrument_list(self):
         logger.info("get HS stock symbols......")
+        # 只要沪深300的股票，别的先不要
+        # 全量
         symbols = get_hs_stock_symbols()
+        # print("\n".join(symbols[:10]))
+
+        # 沪深300
+        symbols = []
+        for line in open("/Users/rui.chengcr/.qlib/qlib_data/cn_data/instruments/csi300.txt"):
+            code = line.split("\t")[0]
+            region = code[:2]
+            num = code[2:]
+            if region == "SH":
+                code = num + ".ss"
+            elif region == "SZ":
+                code = num + ".sz"
+            symbols.append(code)
+
         logger.info(f"get {len(symbols)} symbols.")
         return symbols
 
@@ -502,8 +511,7 @@ class Run(BaseRun):
         if not exists_qlib_data(qlib_data_1d_dir):
             GetData().qlib_data(target_dir=qlib_data_1d_dir, interval=self.interval, region=self.region)
 
-        # download data from yahoo
-        # NOTE: when downloading data from YahooFinance, max_workers is recommended to be 1
+        # download data from ak_share
         self.download_data(delay=delay, start=trading_date, end=end_date, check_data_length=check_data_length)
         # NOTE: a larger max_workers setting here would be faster
         self.max_workers = (
@@ -528,7 +536,7 @@ class Run(BaseRun):
         if _region not in ["cn", "us"]:
             logger.warning(f"Unsupported region: region={_region}, component downloads will be ignored")
             return
-        index_list = ["CSI100", "CSI300"] if _region == "cn" else ["SP500", "NASDAQ100", "DJIA", "SP400"]
+        index_list = ["CSI100", "CSI300", "CSI500"] if _region == "cn" else ["SP500", "NASDAQ100", "DJIA", "SP400"]
         get_instruments = getattr(
             importlib.import_module(f"data_collector.{_region}_index.collector"), "get_instruments"
         )

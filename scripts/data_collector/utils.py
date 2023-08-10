@@ -190,7 +190,7 @@ def get_hs_stock_symbols() -> list:
 
     def _get_symbol():
         _res = set()
-        for _k, _v in (("ha", "ss"), ("sa", "sz"), ("gem", "sz")):
+        for _k, _v in (("ha", "ss"), ("sa", "sz")):
             resp = requests.get(HS_SYMBOLS_URL.format(s_type=_k))
             _res |= set(
                 map(
@@ -202,12 +202,7 @@ def get_hs_stock_symbols() -> list:
         return _res
 
     if _HS_SYMBOLS is None:
-        symbols = set()
-        _retry = 60
-        # It may take multiple times to get the complete
-        while len(symbols) < MINIMUM_SYMBOLS_NUM:
-            symbols |= _get_symbol()
-            time.sleep(3)
+        symbols = _get_symbol()
 
         symbol_cache_path = Path("~/.cache/hs_symbols_cache.pkl").expanduser().resolve()
         symbol_cache_path.parent.mkdir(parents=True, exist_ok=True)
