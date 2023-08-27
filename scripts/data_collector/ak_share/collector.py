@@ -22,7 +22,8 @@ from dateutil.tz import tzlocal
 
 CUR_DIR = Path(__file__).resolve().parent
 sys.path.append(str(CUR_DIR.parent.parent))
-
+import copy
+import numpy as np
 from dump_bin import DumpDataUpdate
 
 from data_collector.base import BaseCollector, BaseNormalize, BaseRun, Normalize
@@ -42,8 +43,77 @@ INDEX_BENCH_URL = "http://push2his.eastmoney.com/api/qt/stock/kline/get?secid=1.
 
 
 class AkNormalizeCN1dExtend(YahooNormalizeCN1dExtend):
-    pass
+    COLUMNS = ["open", "close", "high", "low", "volume"]
 
+    def normalize(self, df: pd.DataFrame) -> pd.DataFrame:
+        # normalize
+        df = self.normalize_yahoo(df, self._calendar_list, self._date_field_name, self._symbol_field_name)
+        # adjusted price
+        df = self.adjusted_price(df)
+        return df
+
+    def adjusted_price(self, df: pd.DataFrame) -> pd.DataFrame:
+        if df.empty:
+            return df
+        df = df.copy()
+        df.set_index(self._date_field_name, inplace=True)
+        df["factor"] = 1
+        return df.reset_index()
+
+    @staticmethod
+    def calc_change(df: pd.DataFrame) -> pd.Series:
+        df = df.copy()
+        _tmp_series = df["close"].fillna(method="ffill")
+        _tmp_shift_series = _tmp_series.shift(1)
+        _tmp_shift_series.iloc[0] = 0
+        change_series = _tmp_series / _tmp_shift_series - 1
+        return change_series
+
+    @staticmethod
+    def normalize_yahoo(
+            df: pd.DataFrame,
+            calendar_list: list = None,
+            date_field_name: str = "date",
+            symbol_field_name: str = "symbol",
+            last_close: float = None,
+    ):
+        if df.empty:
+            return df
+        symbol = df.loc[df[symbol_field_name].first_valid_index(), symbol_field_name]
+        columns = copy.deepcopy(AkNormalizeCN1dExtend.COLUMNS)
+        df = df.copy()
+        df.set_index(date_field_name, inplace=True)
+        df.index = pd.to_datetime(df.index)
+        df = df[~df.index.duplicated(keep="first")]
+        if calendar_list is not None:
+            df = df.reindex(
+                pd.DataFrame(index=calendar_list)
+                .loc[
+                pd.Timestamp(df.index.min()).date(): pd.Timestamp(df.index.max()).date()
+                                                     + pd.Timedelta(hours=23, minutes=59)
+                ]
+                .index
+            )
+        df.sort_index(inplace=True)
+        df.loc[(df["volume"] <= 0) | np.isnan(df["volume"]), list(set(df.columns) - {symbol_field_name})] = np.nan
+
+        df["change"] = AkNormalizeCN1dExtend.calc_change(df)
+
+        columns += ["change"]
+        df.loc[(df["volume"] <= 0) | np.isnan(df["volume"]), columns] = np.nan
+
+        df[symbol_field_name] = symbol
+        df.index.names = [date_field_name]
+        return df.reset_index()
+
+    def normalize(self, df: pd.DataFrame) -> pd.DataFrame:
+        # normalize
+        df = self.normalize_yahoo(
+            df, self._calendar_list, self._date_field_name, self._symbol_field_name, last_close=None
+        )
+        # adjusted price
+        df = self.adjusted_price(df)
+        return df
 
 
 class AKCollector(BaseCollector):
