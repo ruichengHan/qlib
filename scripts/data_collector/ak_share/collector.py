@@ -1,24 +1,22 @@
+import abc
 import datetime
 import importlib
 import multiprocessing
 import sys
+import time
+from abc import ABC
 from pathlib import Path
 
 import akshare
-import abc
-from abc import ABC
 import fire
 import pandas as pd
 import requests
-import time
-
+from dateutil.tz import tzlocal
 from loguru import logger
 
 from qlib.constant import REG_CN as REGION_CN
 from qlib.tests.data import GetData
 from qlib.utils import exists_qlib_data
-
-from dateutil.tz import tzlocal
 
 CUR_DIR = Path(__file__).resolve().parent
 sys.path.append(str(CUR_DIR.parent.parent))
@@ -26,28 +24,22 @@ import copy
 import numpy as np
 from dump_bin import DumpDataUpdate
 
-from data_collector.base import BaseCollector, BaseNormalize, BaseRun, Normalize
-from data_collector.yahoo.collector import YahooNormalizeCN1dExtend, YahooNormalize1d
+from data_collector.base import BaseCollector
+from data_collector.yahoo.collector import YahooNormalize1d, YahooNormalizeCN
 from data_collector.base import BaseRun, Normalize
 from data_collector.utils import (
     deco_retry,
-    get_calendar_list,
-    get_hs_stock_symbols,
-    get_us_stock_symbols,
-    get_in_stock_symbols,
-    get_br_stock_symbols,
-    generate_minutes_calendar_from_daily,
 )
 
 INDEX_BENCH_URL = "http://push2his.eastmoney.com/api/qt/stock/kline/get?secid=1.{index_code}&fields1=f1%2Cf2%2Cf3%2Cf4%2Cf5&fields2=f51%2Cf52%2Cf53%2Cf54%2Cf55%2Cf56%2Cf57%2Cf58&klt=101&fqt=0&beg={begin}&end={end}"
 
 
-class AkNormalizeCN1dExtend(YahooNormalizeCN1dExtend):
+class AkNormalize1dExtend(YahooNormalize1d):
     COLUMNS = ["open", "close", "high", "low", "volume"]
 
     def normalize(self, df: pd.DataFrame) -> pd.DataFrame:
         # normalize
-        df = self.normalize_yahoo(df, self._calendar_list, self._date_field_name, self._symbol_field_name)
+        df = self.normalize_ak(df, self._calendar_list, self._date_field_name, self._symbol_field_name)
         # adjusted price
         df = self.adjusted_price(df)
         return df
@@ -70,7 +62,7 @@ class AkNormalizeCN1dExtend(YahooNormalizeCN1dExtend):
         return change_series
 
     @staticmethod
-    def normalize_yahoo(
+    def normalize_ak(
             df: pd.DataFrame,
             calendar_list: list = None,
             date_field_name: str = "date",
@@ -108,12 +100,16 @@ class AkNormalizeCN1dExtend(YahooNormalizeCN1dExtend):
 
     def normalize(self, df: pd.DataFrame) -> pd.DataFrame:
         # normalize
-        df = self.normalize_yahoo(
+        df = self.normalize_ak(
             df, self._calendar_list, self._date_field_name, self._symbol_field_name, last_close=None
         )
         # adjusted price
         df = self.adjusted_price(df)
         return df
+
+
+class AkNormalizeCN1dExtend(YahooNormalizeCN, AkNormalize1dExtend):
+    pass
 
 
 class AKCollector(BaseCollector):
@@ -432,7 +428,7 @@ class Run(BaseRun):
         )
 
     def normalize_data_1d_extend(
-            self, old_qlib_data_dir, date_field_name: str = "date", symbol_field_name: str = "symbol"
+            self, date_field_name: str = "date", symbol_field_name: str = "symbol"
     ):
         """normalize data extend; extending yahoo qlib data(from: https://github.com/microsoft/qlib/tree/main/scripts#download-cn-data)
 
@@ -452,8 +448,6 @@ class Run(BaseRun):
 
         Parameters
         ----------
-        old_qlib_data_dir: str
-            the qlib data to be updated for yahoo, usually from: https://github.com/microsoft/qlib/tree/main/scripts#download-cn-data
         date_field_name: str
             date field name, default date
         symbol_field_name: str
@@ -470,8 +464,7 @@ class Run(BaseRun):
             normalize_class=_class,
             max_workers=self.max_workers,
             date_field_name=date_field_name,
-            symbol_field_name=symbol_field_name,
-            old_qlib_data_dir=old_qlib_data_dir,
+            symbol_field_name=symbol_field_name
         )
         yc.normalize()
 
