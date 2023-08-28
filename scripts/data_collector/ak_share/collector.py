@@ -263,21 +263,13 @@ class AKCollectorCN(AKCollector, ABC):
     def get_instrument_list(self):
         logger.info("get HS stock symbols......")
         # 只要沪深300的股票，别的先不要
-        # 全量
-        symbols = get_hs_stock_symbols()
-        # print("\n".join(symbols[:10]))
-
-        # 沪深300
         symbols = []
-        for line in open("/Users/rui.chengcr/.qlib/qlib_data/cn_data/instruments/csi300.txt"):
-            code = line.split("\t")[0]
-            region = code[:2]
-            num = code[2:]
-            if region == "SH":
-                code = num + ".ss"
-            elif region == "SZ":
-                code = num + ".sz"
-            symbols.append(code)
+
+        index_list = ["000300", "000905"]
+        for index in index_list:
+            df = akshare.index_stock_cons_csindex(index)
+            stock_list = sorted(list(df["成分券代码"]))
+            symbols += list(map(lambda x: x + ".ss" if x[0] == '6' else x + ".sz", stock_list))
 
         logger.info(f"get {len(symbols)} symbols.")
         return symbols
