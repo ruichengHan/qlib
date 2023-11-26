@@ -49,7 +49,8 @@ class AkNormalize1dExtend(YahooNormalize1d):
             return df
         df = df.copy()
         df.set_index(self._date_field_name, inplace=True)
-        df["factor"] = 1
+        df["factor"] = df["adjclose"] / df["close"]
+        df["factor"] = df["factor"].fillna(method="ffill")
         return df.reset_index()
 
     @staticmethod
@@ -192,7 +193,6 @@ class AKCollector(BaseCollector):
     @staticmethod
     def get_data_from_remote(symbol, interval, start, end, show_1min_logging: bool = False):
         try:
-            # _resp = Ticker(symbol, asynchronous=False).history(interval=interval, start=start, end=end)
             start_date = start.strftime("%Y%m%d")
             end_date = end.strftime("%Y%m%d")
             df = akshare.stock_zh_a_hist(symbol=symbol[:6], start_date=start_date, end_date=end_date, period="daily",
@@ -200,16 +200,24 @@ class AKCollector(BaseCollector):
             df["date"] = df["日期"]
             df["open"] = df["开盘"]
             df["high"] = df["最高"]
-            df["close"] = df["收盘"]
             df["low"] = df["最低"]
             df["volume"] = df["成交量"]
             df["adjclose"] = df["收盘"]
             df["symbol"] = symbol
-            df = df[["date", "open", "high", "close", "low", "volume", "adjclose", "symbol"]]
+            df = df[["date", "open", "high", "low", "volume", "adjclose", "symbol"]]
+
+            origin_df = akshare.stock_zh_a_hist(symbol=symbol[:6], start_date=start_date, end_date=end_date,
+                                                period="daily",
+                                                adjust="")
+            out_df = df.merge(origin_df, left_on='date', right_on='日期')
+            out_df["close"] = out_df["收盘"]
+            df = out_df[["date", "open", "close", "high", "low", "volume", "adjclose", "symbol"]]
 
             return df.reset_index()
 
         except Exception as e:
+            import traceback
+            traceback.print_exception(e)
             logger.warning(
                 f"get data error: {symbol}--{start}--{end}"
                 + "Your data request fails ak share! data"
@@ -282,7 +290,6 @@ class AKCollectorCN(AKCollector, ABC):
 
 class AKCollectorCN1d(AKCollectorCN):
     def download_index_data(self):
-        # TODO: from MSN
         _format = "%Y%m%d"
         _begin = self.start_datetime.strftime(_format)
         _end = self.end_datetime.strftime(_format)
