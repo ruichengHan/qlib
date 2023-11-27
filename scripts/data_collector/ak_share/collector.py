@@ -198,19 +198,20 @@ class AKCollector(BaseCollector):
             df = akshare.stock_zh_a_hist(symbol=symbol[:6], start_date=start_date, end_date=end_date, period="daily",
                                          adjust="hfq")
             df["date"] = df["日期"]
-            df["open"] = df["开盘"]
-            df["high"] = df["最高"]
-            df["low"] = df["最低"]
+
             df["volume"] = df["成交量"]
             df["adjclose"] = df["收盘"]
             df["symbol"] = symbol
-            df = df[["date", "open", "high", "low", "volume", "adjclose", "symbol"]]
+            df = df[["date", "volume", "adjclose", "symbol"]]
 
             origin_df = akshare.stock_zh_a_hist(symbol=symbol[:6], start_date=start_date, end_date=end_date,
                                                 period="daily",
                                                 adjust="")
             out_df = df.merge(origin_df, left_on='date', right_on='日期')
             out_df["close"] = out_df["收盘"]
+            out_df["open"] = out_df["开盘"]
+            out_df["high"] = out_df["最高"]
+            out_df["low"] = out_df["最低"]
             df = out_df[["date", "open", "close", "high", "low", "volume", "adjclose", "symbol"]]
 
             return df.reset_index()
