@@ -49,14 +49,14 @@ class AkNormalize1dExtend(YahooNormalize1d):
             return df
         df = df.copy()
         df.set_index(self._date_field_name, inplace=True)
-        df["factor"] = df["adjclose"] / df["close"]
-        df["factor"] = df["factor"].fillna(method="ffill")
+        df["factor"] = (df["adjclose"] / df["close"])
+        df["factor"] = df["factor"].ffill()
         return df.reset_index()
 
     @staticmethod
     def calc_change(df: pd.DataFrame) -> pd.Series:
         df = df.copy()
-        _tmp_series = df["close"].fillna(method="ffill")
+        _tmp_series = df["adjclose"].ffill()
         _tmp_shift_series = _tmp_series.shift(1)
         _tmp_shift_series.iloc[0] = 0
         change_series = _tmp_series / _tmp_shift_series - 1
