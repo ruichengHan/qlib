@@ -49,7 +49,7 @@ class AkNormalize1dExtend(YahooNormalize1d):
             return df
         df = df.copy()
         df.set_index(self._date_field_name, inplace=True)
-        df["factor"] = (df["adjclose"] / df["close"])
+        df["factor"] = (df["adjclose"] / df["close"]).map(lambda x: "%.3f" % x)
         df["factor"] = df["factor"].ffill()
         return df.reset_index()
 
@@ -90,7 +90,7 @@ class AkNormalize1dExtend(YahooNormalize1d):
         df.sort_index(inplace=True)
         df.loc[(df["volume"] <= 0) | np.isnan(df["volume"]), list(set(df.columns) - {symbol_field_name})] = np.nan
 
-        df["change"] = AkNormalizeCN1dExtend.calc_change(df)
+        df["change"] = AkNormalizeCN1dExtend.calc_change(df).map(lambda x: "%.3f" % x)
 
         columns += ["change"]
         df.loc[(df["volume"] <= 0) | np.isnan(df["volume"]), columns] = np.nan
