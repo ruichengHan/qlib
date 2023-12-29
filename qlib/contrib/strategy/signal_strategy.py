@@ -1,39 +1,39 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
-import os
 import copy
+import os
 import warnings
+from abc import ABC
+from typing import Dict, List, Text, Tuple, Union
+
 import numpy as np
 import pandas as pd
 
-from typing import Dict, List, Text, Tuple, Union
-from abc import ABC
-
-from qlib.data import D
-from qlib.data.dataset import Dataset
-from qlib.model.base import BaseModel
-from qlib.strategy.base import BaseStrategy
+from qlib.backtest.decision import Order, OrderDir, TradeDecisionWO
 from qlib.backtest.position import Position
 from qlib.backtest.signal import Signal, create_signal_from
-from qlib.backtest.decision import Order, OrderDir, TradeDecisionWO
-from qlib.log import get_module_logger
-from qlib.utils import get_pre_trading_date, load_dataset
-from qlib.contrib.strategy.order_generator import OrderGenerator, OrderGenWOInteract
 from qlib.contrib.strategy.optimizer import EnhancedIndexingOptimizer
+from qlib.contrib.strategy.order_generator import OrderGenerator, OrderGenWOInteract
+from qlib.data import D
+from qlib.data.dataset import Dataset
+from qlib.log import get_module_logger
+from qlib.model.base import BaseModel
+from qlib.strategy.base import BaseStrategy
+from qlib.utils import get_pre_trading_date, load_dataset
 
 
 class BaseSignalStrategy(BaseStrategy, ABC):
     def __init__(
-        self,
-        *,
-        signal: Union[Signal, Tuple[BaseModel, Dataset], List, Dict, Text, pd.Series, pd.DataFrame] = None,
-        model=None,
-        dataset=None,
-        risk_degree: float = 0.95,
-        trade_exchange=None,
-        level_infra=None,
-        common_infra=None,
-        **kwargs,
+            self,
+            *,
+            signal: Union[Signal, Tuple[BaseModel, Dataset], List, Dict, Text, pd.Series, pd.DataFrame] = None,
+            model=None,
+            dataset=None,
+            risk_degree: float = 0.95,
+            trade_exchange=None,
+            level_infra=None,
+            common_infra=None,
+            **kwargs,
     ):
         """
         Parameters
@@ -79,16 +79,17 @@ class TopkDropoutStrategy(BaseSignalStrategy):
     # 3. Supporting checking the availability of trade decision
     # 4. Regenerate results with forbid_all_trade_at_limit set to false and flip the default to false, as it is consistent with reality.
     def __init__(
-        self,
-        *,
-        topk,
-        n_drop,
-        method_sell="bottom",
-        method_buy="top",
-        hold_thresh=1,
-        only_tradable=False,
-        forbid_all_trade_at_limit=True,
-        **kwargs,
+            self,
+            *,
+            topk,
+            n_drop,
+            method_sell="bottom",
+            method_buy="top",
+            hold_thresh=5,
+            only_tradable=True,
+            forbid_all_trade_at_limit=True,
+            step_index=0,
+            **kwargs,
     ):
         """
         Parameters
@@ -134,10 +135,13 @@ class TopkDropoutStrategy(BaseSignalStrategy):
         self.hold_thresh = hold_thresh
         self.only_tradable = only_tradable
         self.forbid_all_trade_at_limit = forbid_all_trade_at_limit
+        self.step_index = step_index
 
     def generate_trade_decision(self, execute_result=None):
         # get the number of trading step finished, trade_step can be [0, 1, 2, ..., trade_len - 1]
         trade_step = self.trade_calendar.get_trade_step()
+        if trade_step % 5 != self.step_index:
+            return TradeDecisionWO([], self)
         trade_start_time, trade_end_time = self.trade_calendar.get_step_time(trade_step)
         pred_start_time, pred_end_time = self.trade_calendar.get_step_time(trade_step, shift=1)
         pred_score = self.signal.get_signal(start_time=pred_start_time, end_time=pred_end_time)
@@ -147,44 +151,22 @@ class TopkDropoutStrategy(BaseSignalStrategy):
             pred_score = pred_score.iloc[:, 0]
         if pred_score is None:
             return TradeDecisionWO([], self)
-        if self.only_tradable:
-            # If The strategy only consider tradable stock when make decision
-            # It needs following actions to filter stocks
-            def get_first_n(li, n, reverse=False):
-                cur_n = 0
-                res = []
-                for si in reversed(li) if reverse else li:
-                    if self.trade_exchange.is_stock_tradable(
+
+        def get_first_n(li, n, reverse=False):
+            cur_n = 0
+            res = []
+            for si in reversed(li) if reverse else li:
+                if self.trade_exchange.is_stock_tradable(
                         stock_id=si, start_time=trade_start_time, end_time=trade_end_time
-                    ):
-                        res.append(si)
-                        cur_n += 1
-                        if cur_n >= n:
-                            break
-                return res[::-1] if reverse else res
+                ):
+                    res.append(si)
+                    cur_n += 1
+                    if cur_n >= n:
+                        break
+            return res[::-1] if reverse else res
 
-            def get_last_n(li, n):
-                return get_first_n(li, n, reverse=True)
-
-            def filter_stock(li):
-                return [
-                    si
-                    for si in li
-                    if self.trade_exchange.is_stock_tradable(
-                        stock_id=si, start_time=trade_start_time, end_time=trade_end_time
-                    )
-                ]
-
-        else:
-            # Otherwise, the stock will make decision without the stock tradable info
-            def get_first_n(li, n):
-                return list(li)[:n]
-
-            def get_last_n(li, n):
-                return list(li)[-n:]
-
-            def filter_stock(li):
-                return li
+        def get_last_n(li, n):
+            return get_first_n(li, n, reverse=True)
 
         current_temp: Position = copy.deepcopy(self.trade_position)
         # generate order list for this adjust date
@@ -196,45 +178,26 @@ class TopkDropoutStrategy(BaseSignalStrategy):
         # last position (sorted by score)
         last = pred_score.reindex(current_stock_list).sort_values(ascending=False).index
         # The new stocks today want to buy **at most**
-        if self.method_buy == "top":
-            today = get_first_n(
-                pred_score[~pred_score.index.isin(last)].sort_values(ascending=False).index,
-                self.n_drop + self.topk - len(last),
-            )
-        elif self.method_buy == "random":
-            topk_candi = get_first_n(pred_score.sort_values(ascending=False).index, self.topk)
-            candi = list(filter(lambda x: x not in last, topk_candi))
-            n = self.n_drop + self.topk - len(last)
-            try:
-                today = np.random.choice(candi, n, replace=False)
-            except ValueError:
-                today = candi
-        else:
-            raise NotImplementedError(f"This type of input is not supported")
+        today = get_first_n(
+            pred_score[~pred_score.index.isin(last)].sort_values(ascending=False).index,
+            self.n_drop + self.topk - len(last),
+        )
+
         # combine(new stocks + last stocks),  we will drop stocks from this list
         # In case of dropping higher score stock and buying lower score stock.
         comb = pred_score.reindex(last.union(pd.Index(today))).sort_values(ascending=False).index
 
         # Get the stock list we really want to sell (After filtering the case that we sell high and buy low)
-        if self.method_sell == "bottom":
-            sell = last[last.isin(get_last_n(comb, self.n_drop))]
-        elif self.method_sell == "random":
-            candi = filter_stock(last)
-            try:
-                sell = pd.Index(np.random.choice(candi, self.n_drop, replace=False) if len(last) else [])
-            except ValueError:  # No enough candidates
-                sell = candi
-        else:
-            raise NotImplementedError(f"This type of input is not supported")
+        sell = last[last.isin(get_last_n(comb, self.n_drop))]
 
         # Get the stock list we really want to buy
         buy = today[: len(sell) + self.topk - len(last)]
         for code in current_stock_list:
             if not self.trade_exchange.is_stock_tradable(
-                stock_id=code,
-                start_time=trade_start_time,
-                end_time=trade_end_time,
-                direction=None if self.forbid_all_trade_at_limit else OrderDir.SELL,
+                    stock_id=code,
+                    start_time=trade_start_time,
+                    end_time=trade_end_time,
+                    direction=None if self.forbid_all_trade_at_limit else OrderDir.SELL,
             ):
                 continue
             if code in sell:
@@ -271,10 +234,10 @@ class TopkDropoutStrategy(BaseSignalStrategy):
         for code in buy:
             # check is stock suspended
             if not self.trade_exchange.is_stock_tradable(
-                stock_id=code,
-                start_time=trade_start_time,
-                end_time=trade_end_time,
-                direction=None if self.forbid_all_trade_at_limit else OrderDir.BUY,
+                    stock_id=code,
+                    start_time=trade_start_time,
+                    end_time=trade_end_time,
+                    direction=None if self.forbid_all_trade_at_limit else OrderDir.BUY,
             ):
                 continue
             # buy order
@@ -301,10 +264,10 @@ class WeightStrategyBase(BaseSignalStrategy):
     # 2. Supporting alter_outer_trade_decision
     # 3. Supporting checking the availability of trade decision
     def __init__(
-        self,
-        *,
-        order_generator_cls_or_obj=OrderGenWOInteract,
-        **kwargs,
+            self,
+            *,
+            order_generator_cls_or_obj=OrderGenWOInteract,
+            **kwargs,
     ):
         """
         signal :
@@ -373,7 +336,6 @@ class WeightStrategyBase(BaseSignalStrategy):
 
 
 class EnhancedIndexingStrategy(WeightStrategyBase):
-
     """Enhanced Indexing Strategy
 
     Enhanced indexing combines the arts of active management and passive management,
@@ -405,15 +367,15 @@ class EnhancedIndexingStrategy(WeightStrategyBase):
     BLACKLIST_NAME = "blacklist.pkl"
 
     def __init__(
-        self,
-        *,
-        riskmodel_root,
-        market="csi500",
-        turn_limit=None,
-        name_mapping={},
-        optimizer_kwargs={},
-        verbose=False,
-        **kwargs,
+            self,
+            *,
+            riskmodel_root,
+            market="csi500",
+            turn_limit=None,
+            name_mapping={},
+            optimizer_kwargs={},
+            verbose=False,
+            **kwargs,
     ):
         super().__init__(**kwargs)
 
@@ -506,7 +468,7 @@ class EnhancedIndexingStrategy(WeightStrategyBase):
             r=score,
             F=factor_exp,
             cov_b=factor_cov,
-            var_u=specific_risk**2,
+            var_u=specific_risk ** 2,
             w0=cur_weight,
             wb=bench_weight,
             mfh=mask_force_hold,

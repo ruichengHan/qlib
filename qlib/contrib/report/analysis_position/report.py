@@ -14,11 +14,11 @@ def _calculate_maximum(df: pd.DataFrame, is_ex: bool = False):
     :return:
     """
     if is_ex:
-        end_date = df["cum_ex_return_wo_cost_mdd"].idxmin()
-        start_date = df.loc[df.index <= end_date]["cum_ex_return_wo_cost"].idxmax()
+        end_date = df["cum_ex_return_w_cost"].idxmin()
+        start_date = df.loc[df.index <= end_date]["cum_ex_return_w_cost"].idxmax()
     else:
-        end_date = df["return_wo_mdd"].idxmin()
-        start_date = df.loc[df.index <= end_date]["cum_return_wo_cost"].idxmax()
+        end_date = df["return_w_cost_mdd"].idxmin()
+        start_date = df.loc[df.index <= end_date]["return_w_cost_mdd"].idxmax()
     return start_date, end_date
 
 
@@ -44,17 +44,16 @@ def _calculate_report_data(df: pd.DataFrame) -> pd.DataFrame:
     report_df = pd.DataFrame()
 
     report_df["cum_bench"] = df["bench"].cumsum()
-    report_df["cum_return_wo_cost"] = df["return"].cumsum()
+    # report_df["cum_return_wo_cost"] = df["return"].cumsum()
     report_df["cum_return_w_cost"] = (df["return"] - df["cost"]).cumsum()
     # report_df['cum_return'] - report_df['cum_return'].cummax()
-    report_df["return_wo_mdd"] = _calculate_mdd(report_df["cum_return_wo_cost"])
+    # report_df["return_wo_mdd"] = _calculate_mdd(report_df["cum_return_wo_cost"])
     report_df["return_w_cost_mdd"] = _calculate_mdd((df["return"] - df["cost"]).cumsum())
 
-    report_df["cum_ex_return_wo_cost"] = (df["return"] - df["bench"]).cumsum()
+    # report_df["cum_ex_return_wo_cost"] = (df["return"] - df["bench"]).cumsum()
     report_df["cum_ex_return_w_cost"] = (df["return"] - df["bench"] - df["cost"]).cumsum()
-    report_df["cum_ex_return_wo_cost_mdd"] = _calculate_mdd((df["return"] - df["bench"]).cumsum())
+    # report_df["cum_ex_return_wo_cost_mdd"] = _calculate_mdd((df["return"] - df["bench"]).cumsum())
     report_df["cum_ex_return_w_cost_mdd"] = _calculate_mdd((df["return"] - df["cost"] - df["bench"]).cumsum())
-    # return_wo_mdd , return_w_cost_mdd,  cum_ex_return_wo_cost_mdd, cum_ex_return_w
 
     report_df["turnover"] = df["turnover"]
     report_df.sort_index(ascending=True, inplace=True)
@@ -91,15 +90,15 @@ def _report_figure(df: pd.DataFrame) -> [list, tuple]:
     _temp_fill_args = {"fill": "tozeroy", "mode": "lines+markers"}
     _column_row_col_dict = [
         ("cum_bench", dict(row=1, col=1)),
-        ("cum_return_wo_cost", dict(row=1, col=1)),
+        # ("cum_return_wo_cost", dict(row=1, col=1)),
         ("cum_return_w_cost", dict(row=1, col=1)),
-        ("return_wo_mdd", dict(row=2, col=1, graph_kwargs=_temp_fill_args)),
+        # ("return_wo_mdd", dict(row=2, col=1, graph_kwargs=_temp_fill_args)),
         ("return_w_cost_mdd", dict(row=3, col=1, graph_kwargs=_temp_fill_args)),
-        ("cum_ex_return_wo_cost", dict(row=4, col=1)),
+        # ("cum_ex_return_wo_cost", dict(row=4, col=1)),
         ("cum_ex_return_w_cost", dict(row=4, col=1)),
         ("turnover", dict(row=5, col=1)),
         ("cum_ex_return_w_cost_mdd", dict(row=6, col=1, graph_kwargs=_temp_fill_args)),
-        ("cum_ex_return_wo_cost_mdd", dict(row=7, col=1, graph_kwargs=_temp_fill_args)),
+        # ("cum_ex_return_wo_cost_mdd", dict(row=7, col=1, graph_kwargs=_temp_fill_args)),
     ]
 
     _subplot_layout = dict()
