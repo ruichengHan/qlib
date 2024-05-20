@@ -118,8 +118,8 @@ class NpElemOperator(ElemOperator):
         series = self.feature.load(instrument, start_index, end_index, *args)
         return getattr(np, self.func)(series)
 
-    def _load_internal_frame(self, dataframe):
-        series = self.feature.load_dataframe(dataframe)
+    def _load_internal_frame(self, instruments, dataframe):
+        series = self.feature.load_dataframe(instruments, dataframe)
         return getattr(np, self.func)(series)
 
 
@@ -167,8 +167,8 @@ class Sign(NpElemOperator):
         series = series.astype(np.float32)
         return getattr(np, self.func)(series)
 
-    def _load_internal_frame(self, dataframe):
-        series = self.feature.load_dataframe(dataframe)
+    def _load_internal_frame(self, instruments, dataframe):
+        series = self.feature.load_dataframe(instruments, dataframe)
         series = series.astype(np.float32)
         return getattr(np, self.func)(series)
 
@@ -307,17 +307,17 @@ class NpPairOperator(PairOperator):
         self.func = func
         super(NpPairOperator, self).__init__(feature_left, feature_right)
 
-    def _load_internal_frame(self, dataframe):
+    def _load_internal_frame(self, instruments, dataframe):
         assert any(
             [isinstance(self.feature_left, (Expression,)), self.feature_right, Expression]
         ), "at least one of two inputs is Expression instance"
         if isinstance(self.feature_left, (Expression,)):
-            series_left = self.feature_left.load_dataframe(dataframe)
+            series_left = self.feature_left.load_dataframe(instruments, dataframe)
         else:
             series_left = self.feature_left
 
         if isinstance(self.feature_right, (Expression, )):
-            series_right = self.feature_right.load_dataframe(dataframe)
+            series_right = self.feature_right.load_dataframe(instruments, dataframe)
         else:
             series_right = self.feature_right
 
@@ -779,6 +779,16 @@ class Rolling(ExpressionOps):
             # series.iloc[:self.N-1] = np.nan
         # series[isnull] = np.nan
         return series
+
+    def _load_internal_frame(self, instruments, dataframe):
+        series = self.feature.load_dataframe(instruments, dataframe)
+        output = {}
+        for inst in instruments:
+            part_series = series.loc[inst]
+            out_series = getattr(part_series.rolling(self.N, min_periods=1), self.func)()
+            output[inst] = out_series
+        return pd.concat(output)
+
 
     def get_longest_back_rolling(self):
         if self.N == 0:

@@ -204,7 +204,7 @@ class Expression(abc.ABC):
         H["f"][cache_key] = series
         return series
 
-    def _load_internal_frame(self, dataframe):
+    def _load_internal_frame(self, instruments, dataframe):
         """
         Parameters
         ----------
@@ -216,8 +216,8 @@ class Expression(abc.ABC):
 
         raise NotImplementedError("This function must be implemented in your newly defined feature")
 
-    def load_dataframe(self, dataframe):
-        series = self._load_internal_frame(dataframe)
+    def load_dataframe(self, instruments, dataframe):
+        series = self._load_internal_frame(instruments, dataframe)
         return series
 
     @abc.abstractmethod
@@ -274,7 +274,7 @@ class Feature(Expression):
 
         return FeatureD.feature(instrument, str(self), start_index, end_index, freq)
 
-    def _load_internal_frame(self, dataframe):
+    def _load_internal_frame(self, instruments, dataframe):
         return dataframe[str(self)]
 
     def get_longest_back_rolling(self):
