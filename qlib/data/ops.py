@@ -118,6 +118,10 @@ class NpElemOperator(ElemOperator):
         series = self.feature.load(instrument, start_index, end_index, *args)
         return getattr(np, self.func)(series)
 
+    def _load_internal_frame(self, dataframe):
+        series = self.feature.load_dataframe(dataframe)
+        return getattr(np, self.func)(series)
+
 
 class Abs(NpElemOperator):
     """Feature Absolute Value
@@ -160,6 +164,11 @@ class Sign(NpElemOperator):
         """
         series = self.feature.load(instrument, start_index, end_index, *args)
         # TODO:  More precision types should be configurable
+        series = series.astype(np.float32)
+        return getattr(np, self.func)(series)
+
+    def _load_internal_frame(self, dataframe):
+        series = self.feature.load_dataframe(dataframe)
         series = series.astype(np.float32)
         return getattr(np, self.func)(series)
 
@@ -297,6 +306,23 @@ class NpPairOperator(PairOperator):
     def __init__(self, feature_left, feature_right, func):
         self.func = func
         super(NpPairOperator, self).__init__(feature_left, feature_right)
+
+    def _load_internal_frame(self, dataframe):
+        assert any(
+            [isinstance(self.feature_left, (Expression,)), self.feature_right, Expression]
+        ), "at least one of two inputs is Expression instance"
+        if isinstance(self.feature_left, (Expression,)):
+            series_left = self.feature_left.load_dataframe(dataframe)
+        else:
+            series_left = self.feature_left
+
+        if isinstance(self.feature_right, (Expression, )):
+            series_right = self.feature_right.load_dataframe(dataframe)
+        else:
+            series_right = self.feature_right
+
+        res = getattr(np, self.func)(series_left, series_right)
+        return res
 
     def _load_internal(self, instrument, start_index, end_index, *args):
         assert any(

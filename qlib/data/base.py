@@ -6,7 +6,9 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
+
 import pandas as pd
+
 from ..log import get_module_logger
 
 
@@ -202,6 +204,22 @@ class Expression(abc.ABC):
         H["f"][cache_key] = series
         return series
 
+    def _load_internal_frame(self, dataframe):
+        """
+        Parameters
+        ----------
+        dataframe : pd.DataFrame
+            instrument code.
+        Returns
+        pd.Series
+        """
+
+        raise NotImplementedError("This function must be implemented in your newly defined feature")
+
+    def load_dataframe(self, dataframe):
+        series = self._load_internal_frame(dataframe)
+        return series
+
     @abc.abstractmethod
     def _load_internal(self, instrument, start_index, end_index, *args) -> pd.Series:
         raise NotImplementedError("This function must be implemented in your newly defined feature")
@@ -255,6 +273,9 @@ class Feature(Expression):
         from .data import FeatureD  # pylint: disable=C0415
 
         return FeatureD.feature(instrument, str(self), start_index, end_index, freq)
+
+    def _load_internal_frame(self, dataframe):
+        return dataframe[str(self)]
 
     def get_longest_back_rolling(self):
         return 0
