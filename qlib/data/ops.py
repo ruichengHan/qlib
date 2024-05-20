@@ -731,6 +731,35 @@ class If(ExpressionOps):
         return max(ll, rl, cl), max(lr, rr, cr)
 
 
+class CrossRank(ExpressionOps):
+    def __init__(self, feature):
+        self.feature = feature
+
+    def _load_internal_frame(self, instruments, dataframe):
+        series = self.feature.load_dataframe(instruments, dataframe)
+        output = {}
+        date_index_list = series.index.levels[1]
+        for date in date_index_list:
+            part_series = series.loc[(slice(None), date)]
+            out_series = part_series.rank(pct=True)
+            output[date] = out_series
+        series = pd.concat(output, names=["datetime"])
+        output = {}
+        for inst in instruments:
+            partial = series.loc[(slice(None), inst)]
+            output[inst] = partial
+        return pd.concat(output, names=['instrument'])
+
+    def _load_internal(self, instrument, start_index, end_index, *args) -> pd.Series:
+        raise NotImplementedError()
+
+    def get_extended_window_size(self):
+        raise NotImplementedError()
+
+    def get_longest_back_rolling(self):
+        raise NotImplementedError()
+
+
 #################### Rolling ####################
 # NOTE: methods like `rolling.mean` are optimized with cython,
 # and are super faster than `rolling.apply(np.mean)`
@@ -1203,6 +1232,15 @@ class Rank(Rolling):
 
         return rolling_or_expending.apply(rank, raw=True)
 
+    def _load_internal_frame(self, instruments, dataframe):
+        series = self.feature.load_dataframe(instruments, dataframe)
+        output = {}
+        for inst in instruments:
+            part_series = series.loc[inst]
+            out_series = part_series.rolling(self.N, min_periods=1).rank(pct=True)
+            output[inst] = out_series
+        return pd.concat(output, names=["instrument"])
+
 
 class Count(Rolling):
     """Rolling Count
@@ -1649,6 +1687,7 @@ OpsList = [
     If,
     Feature,
     PFeature,
+    CrossRank
 ] + [TResample]
 
 
