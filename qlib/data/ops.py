@@ -29,7 +29,6 @@ except ValueError:
     # https://www.kaggle.com/general/293387
     # https://www.kaggle.com/product-feedback/98562
 
-
 np.seterr(invalid="ignore")
 
 
@@ -316,7 +315,7 @@ class NpPairOperator(PairOperator):
         else:
             series_left = self.feature_left
 
-        if isinstance(self.feature_right, (Expression, )):
+        if isinstance(self.feature_right, (Expression,)):
             series_right = self.feature_right.load_dataframe(instruments, dataframe)
         else:
             series_right = self.feature_right
@@ -731,24 +730,24 @@ class If(ExpressionOps):
         return max(ll, rl, cl), max(lr, rr, cr)
 
 
-class CrossRank(ExpressionOps):
+class Rank(ExpressionOps):
     def __init__(self, feature):
         self.feature = feature
 
     def _load_internal_frame(self, instruments, dataframe):
         series = self.feature.load_dataframe(instruments, dataframe)
         output = {}
-        date_index_list = series.index.levels[1]
+        date_index_list = series.index.levels[0]
         for date in date_index_list:
-            part_series = series.loc[(slice(None), date)]
+            part_series = series.loc[(date,)]
             out_series = part_series.rank(pct=True)
             output[date] = out_series
-        series = pd.concat(output, names=["datetime"])
-        output = {}
-        for inst in instruments:
-            partial = series.loc[(slice(None), inst)]
-            output[inst] = partial
-        return pd.concat(output, names=['instrument'])
+        return pd.concat(output, names=["datetime"])
+        # output = {}
+        # for inst in instruments:
+        #     partial = series.loc[(slice(None), inst)]
+        #     output[inst] = partial
+        # return pd.concat(output, names=['instrument'])
 
     def _load_internal(self, instrument, start_index, end_index, *args) -> pd.Series:
         raise NotImplementedError()
@@ -817,7 +816,6 @@ class Rolling(ExpressionOps):
             out_series = getattr(part_series.rolling(self.N, min_periods=1), self.func)()
             output[inst] = out_series
         return pd.concat(output)
-
 
     def get_longest_back_rolling(self):
         if self.N == 0:
@@ -1182,6 +1180,7 @@ class Mad(Rolling):
 
     def _load_internal(self, instrument, start_index, end_index, *args):
         series = self.feature.load(instrument, start_index, end_index, *args)
+
         # TODO: implement in Cython
 
         def mad(x):
@@ -1195,7 +1194,7 @@ class Mad(Rolling):
         return series
 
 
-class Rank(Rolling):
+class TSRank(Rolling):
     """Rolling Rank (Percentile)
 
     Parameters
@@ -1212,7 +1211,7 @@ class Rank(Rolling):
     """
 
     def __init__(self, feature, N):
-        super(Rank, self).__init__(feature, N, "rank")
+        super(TSRank, self).__init__(feature, N, "rank")
 
     # for compatiblity of python 3.7, which doesn't support pandas 1.4.0+ which implements Rolling.rank
     def _load_internal(self, instrument, start_index, end_index, *args):
@@ -1288,6 +1287,19 @@ class Delta(Rolling):
         else:
             series = series - series.shift(self.N)
         return series
+
+    def _load_internal_frame(self, instruments, dataframe):
+        series = self.feature.load_dataframe(instruments, dataframe)
+        if self.N == 0:
+            raise NotImplementedError("Delta 不能是0")
+        output = {}
+        for inst in instruments:
+            inst_series = series.loc[(slice(None), inst)]
+            inst_series = inst_series - inst_series.shift(self.N)
+            output[inst] = inst_series
+        out_s = pd.concat(output, names=["instrument"])
+        out_s = out_s.swaplevel("datetime", "instrument")
+        return out_s
 
 
 # TODO:
@@ -1406,6 +1418,7 @@ class WMA(Rolling):
 
     def _load_internal(self, instrument, start_index, end_index, *args):
         series = self.feature.load(instrument, start_index, end_index, *args)
+
         # TODO: implement in Cython
 
         def weighted_mean(x):
@@ -1506,6 +1519,31 @@ class PairRolling(ExpressionOps):
             series = getattr(series_left.rolling(self.N, min_periods=1), self.func)(series_right)
         return series
 
+    def _load_internal_frame(self, instruments, dataframe):
+        assert any(
+            [isinstance(self.feature_left, Expression), self.feature_right, Expression]
+        ), "at least one of two inputs is Expression instance"
+        if isinstance(self.feature_left, (Expression,)):
+            series_left = self.feature_left.load_dataframe(instruments, dataframe)
+        else:
+            raise NotImplementedError("PairRolling 不能固定值")
+
+        if isinstance(self.feature_right, (Expression,)):
+            series_right = self.feature_right.load_dataframe(instruments, dataframe)
+        else:
+            raise NotImplementedError("PairRolling 不能固定值")
+        if self.N == 0:
+            raise NotImplementedError("回溯不支持为0")
+
+        output = {}
+        for inst in instruments:
+            inst_left = series_left.loc[slice(None), inst]
+            inst_right = series_right.loc[slice(None), inst]
+            series = getattr(inst_left.rolling(self.N, min_periods=1), self.func)(inst_right)
+            output[inst] = series
+        all_series = pd.concat(output, names=["instrument"])
+        return all_series.swaplevel("datetime", "instrument")
+
     def get_longest_back_rolling(self):
         if self.N == 0:
             return np.inf
@@ -1568,7 +1606,12 @@ class Corr(PairRolling):
         res.loc[
             np.isclose(series_left.rolling(self.N, min_periods=1).std(), 0, atol=2e-05)
             | np.isclose(series_right.rolling(self.N, min_periods=1).std(), 0, atol=2e-05)
-        ] = np.nan
+            ] = np.nan
+        return res
+
+    def _load_internal_frame(self, instruments, dataframe):
+        res: pd.Series = super(Corr, self)._load_internal_frame(instruments, dataframe)
+        # res.loc[res > 0] = np.nan
         return res
 
 
@@ -1638,57 +1681,57 @@ class TResample(ElemOperator):
 
 TOpsList = [TResample]
 OpsList = [
-    ChangeInstrument,
-    Rolling,
-    Ref,
-    Max,
-    Min,
-    Sum,
-    Mean,
-    Std,
-    Var,
-    Skew,
-    Kurt,
-    Med,
-    Mad,
-    Slope,
-    Rsquare,
-    Resi,
-    Rank,
-    Quantile,
-    Count,
-    EMA,
-    WMA,
-    Corr,
-    Cov,
-    Delta,
-    Abs,
-    Sign,
-    Log,
-    Power,
-    Add,
-    Sub,
-    Mul,
-    Div,
-    Greater,
-    Less,
-    And,
-    Or,
-    Not,
-    Gt,
-    Ge,
-    Lt,
-    Le,
-    Eq,
-    Ne,
-    Mask,
-    IdxMax,
-    IdxMin,
-    If,
-    Feature,
-    PFeature,
-    CrossRank
-] + [TResample]
+              ChangeInstrument,
+              Rolling,
+              Ref,
+              Max,
+              Min,
+              Sum,
+              Mean,
+              Std,
+              Var,
+              Skew,
+              Kurt,
+              Med,
+              Mad,
+              Slope,
+              Rsquare,
+              Resi,
+              TSRank,
+              Quantile,
+              Count,
+              EMA,
+              WMA,
+              Corr,
+              Cov,
+              Delta,
+              Abs,
+              Sign,
+              Log,
+              Power,
+              Add,
+              Sub,
+              Mul,
+              Div,
+              Greater,
+              Less,
+              And,
+              Or,
+              Not,
+              Gt,
+              Ge,
+              Lt,
+              Le,
+              Eq,
+              Ne,
+              Mask,
+              IdxMax,
+              IdxMin,
+              If,
+              Feature,
+              PFeature,
+              Rank
+          ] + [TResample]
 
 
 class OpsWrapper:
