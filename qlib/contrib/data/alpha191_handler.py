@@ -61,7 +61,18 @@ class Alpha191Handler(DataHandlerLP):
         return [
             # ("001", "-1 * Corr(Rank(Delta(Log($volume), 1)), Rank(($close - $open) / $open), 6)"),
             # ("002", "-1 * Delta(((($close - $low) - ($high - $close)) / ($high - $low)), 1)"),
-            ("005", "-1 * TSMax(Corr(TSRank($volume, 5), TSRank($high, 5), 5), 3)")
+            # ("005", "-1 * TSMax(Corr(TSRank($volume, 5), TSRank($high, 5), 5), 3)"),
+            # ("007", "(Rank(Greater(($vwap - $close), 3)) + Rank(Less(($vwap - $close), 3))) * Rank(Delta($volume, 3))"),
+            # ("008", "Rank(Delta((((($high + $low) / 2) * 0.2) + ($vwap * 0.8)), 4) * -1)"),
+            # ("011", "Sum((($close-$low)-($high-$close))/($high-$low)*$volume / TSMax($volume, 20),6)"), # 011 我改了一点，否则volume量纲不一样,虽然效果也没变好
+            # ("012", "Rank(($open - (Sum($vwap, 10) / 10))) * (-1 * (Rank(Abs(($close - $vwap)))))"),
+            # ("013", "Power($high * $low,0.5) - $vwap"),
+            # ("014", "$close-Ref($close,5)")  # 统一量纲在018有
+            # ("015", "$open/Ref($close,1)-1")
+            # ("016", "(-1 * TSMax(Rank(Corr(Rank($volume), Rank($vwap), 5)), 5))")
+            # ("017", "Power(Rank(($vwap - Greater($vwap, 15))), Delta($close, 5))")  # 这个我实在看不懂……
+            # ("018", "$close / Ref($close, 5)")
+            # ("020", "$close / Ref($close, 6)") # 这个原公式是，(CLOSE-DELAY(CLOSE,6))/DELAY(CLOSE,6)*100，没用，这个就等于018 - 1
         ]
 
     def fetch(

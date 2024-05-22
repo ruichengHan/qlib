@@ -870,6 +870,16 @@ class Ref(Rolling):
             series = series.shift(self.N)  # copy
         return series
 
+    def _load_internal_frame(self, instruments, dataframe):
+        series = self.feature.load_dataframe(instruments, dataframe)
+        output = {}
+        for inst in instruments:
+            part_series = series.loc[(slice(None), inst)]
+            out_series = part_series.shift(self.N)
+            output[inst] = out_series
+        out_series = pd.concat(output, names=["instrument"])
+        return out_series.swaplevel("datetime", "instrument")
+
     def get_longest_back_rolling(self):
         if self.N == 0:
             return np.inf
@@ -1058,7 +1068,7 @@ class IdxMax(Rolling):
         return series
 
 
-class Min(Rolling):
+class TSMin(Rolling):
     """Rolling Min
 
     Parameters
@@ -1075,7 +1085,7 @@ class Min(Rolling):
     """
 
     def __init__(self, feature, N):
-        super(Min, self).__init__(feature, N, "min")
+        super(TSMin, self).__init__(feature, N, "min")
 
 
 class IdxMin(Rolling):
@@ -1686,7 +1696,7 @@ OpsList = [
               Rolling,
               Ref,
               TSMax,
-              Min,
+              TSMin,
               Sum,
               Mean,
               Std,
