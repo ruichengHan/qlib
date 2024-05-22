@@ -275,6 +275,8 @@ class Feature(Expression):
         return FeatureD.feature(instrument, str(self), start_index, end_index, freq)
 
     def _load_internal_frame(self, instruments, dataframe):
+        if isinstance(dataframe.columns, pd.MultiIndex):
+            return dataframe["feature"][str(self)]
         return dataframe[str(self)]
 
     def get_longest_back_rolling(self):

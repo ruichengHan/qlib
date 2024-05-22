@@ -81,10 +81,28 @@ class Alpha191Handler(DataHandlerLP):
             proc_func=proc_func,
         )
 
+        if df.columns.size == 1:
+            return df
+
+        instruments = set([])
+        for index, row in df.iterrows():
+            inst = index[1]
+            instruments.add(inst)
+
+        output_df = pd.DataFrame()
         provider = LocalExpressionProvider()
         for (name, exp) in self.extra_feature():
             expression = provider.get_expression_instance(exp)
-            series = expression.load_dataframe(self.instruments, df)
-            df[name] = series
+            series = expression.load_dataframe(instruments, df)
+            output_df[name] = series
 
-        return df
+        out_columns = list(map(lambda x: ("feature", x[0]), self.extra_feature()))
+
+        try:
+            output_df["LABEL0"] = df["label"]["LABEL0"]
+            out_columns += [("label", "LABEL0")]
+        except:
+            pass
+        output_df.columns = pd.MultiIndex.from_tuples(out_columns)
+
+        return output_df

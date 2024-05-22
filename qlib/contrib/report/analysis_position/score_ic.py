@@ -7,7 +7,7 @@ from ..graph import ScatterGraph
 from ..utils import guess_plotly_rangebreaks
 
 
-def _get_score_ic(pred_label: pd.DataFrame):
+def get_score_ic(pred_label: pd.DataFrame):
     """
 
     :param pred_label:
@@ -53,7 +53,7 @@ def score_ic_graph(pred_label: pd.DataFrame, show_notebook: bool = True, **kwarg
     :param show_notebook: whether to display graphics in notebook, the default is **True**.
     :return: if show_notebook is True, display in notebook; else return **plotly.graph_objs.Figure** list.
     """
-    _ic_df = _get_score_ic(pred_label)
+    _ic_df = get_score_ic(pred_label)
 
     _figure = ScatterGraph(
         _ic_df,

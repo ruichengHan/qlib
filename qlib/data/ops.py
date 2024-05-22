@@ -739,15 +739,13 @@ class Rank(ExpressionOps):
         output = {}
         date_index_list = series.index.levels[0]
         for date in date_index_list:
-            part_series = series.loc[(date,)]
-            out_series = part_series.rank(pct=True)
-            output[date] = out_series
+            try:
+                part_series = series.loc[(date, slice(None))]
+                out_series = part_series.rank(pct=True)
+                output[date] = out_series
+            except:
+                continue
         return pd.concat(output, names=["datetime"])
-        # output = {}
-        # for inst in instruments:
-        #     partial = series.loc[(slice(None), inst)]
-        #     output[inst] = partial
-        # return pd.concat(output, names=['instrument'])
 
     def _load_internal(self, instrument, start_index, end_index, *args) -> pd.Series:
         raise NotImplementedError()
