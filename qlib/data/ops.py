@@ -810,10 +810,11 @@ class Rolling(ExpressionOps):
         series = self.feature.load_dataframe(instruments, dataframe)
         output = {}
         for inst in instruments:
-            part_series = series.loc[inst]
+            part_series = series.loc[(slice(None), inst)]
             out_series = getattr(part_series.rolling(self.N, min_periods=1), self.func)()
             output[inst] = out_series
-        return pd.concat(output)
+        out_series = pd.concat(output, names=["instrument"])
+        return out_series.swaplevel("datetime", "instrument")
 
     def get_longest_back_rolling(self):
         if self.N == 0:
@@ -1009,7 +1010,7 @@ class Kurt(Rolling):
         super(Kurt, self).__init__(feature, N, "kurt")
 
 
-class Max(Rolling):
+class TSMax(Rolling):
     """Rolling Max
 
     Parameters
@@ -1026,7 +1027,7 @@ class Max(Rolling):
     """
 
     def __init__(self, feature, N):
-        super(Max, self).__init__(feature, N, "max")
+        super(TSMax, self).__init__(feature, N, "max")
 
 
 class IdxMax(Rolling):
@@ -1233,10 +1234,12 @@ class TSRank(Rolling):
         series = self.feature.load_dataframe(instruments, dataframe)
         output = {}
         for inst in instruments:
-            part_series = series.loc[inst]
+            part_series = series.loc[(slice(None), inst)]
             out_series = part_series.rolling(self.N, min_periods=1).rank(pct=True)
             output[inst] = out_series
-        return pd.concat(output, names=["instrument"])
+        out_s = pd.concat(output, names=["instrument"])
+        out_s = out_s.swaplevel("datetime", "instrument")
+        return out_s
 
 
 class Count(Rolling):
@@ -1682,7 +1685,7 @@ OpsList = [
               ChangeInstrument,
               Rolling,
               Ref,
-              Max,
+              TSMax,
               Min,
               Sum,
               Mean,

@@ -59,8 +59,9 @@ class Alpha191Handler(DataHandlerLP):
 
     def extra_feature(self):
         return [
-            ("001", "-1 * Corr(Rank(Delta(Log($volume), 1)), Rank(($close - $open) / $open), 6)"),
-            ("002", "-1 * Delta(((($close - $low) - ($high - $close)) / ($high - $low)), 1)")
+            # ("001", "-1 * Corr(Rank(Delta(Log($volume), 1)), Rank(($close - $open) / $open), 6)"),
+            # ("002", "-1 * Delta(((($close - $low) - ($high - $close)) / ($high - $low)), 1)"),
+            ("005", "-1 * TSMax(Corr(TSRank($volume, 5), TSRank($high, 5), 5), 3)")
         ]
 
     def fetch(
@@ -89,6 +90,7 @@ class Alpha191Handler(DataHandlerLP):
             inst = index[1]
             instruments.add(inst)
 
+        df['$vwap'] = (df["$high"] * 2 + df["$low"] * 2 + df["$close"] + df["$open"]) / 6
         output_df = pd.DataFrame()
         provider = LocalExpressionProvider()
         for (name, exp) in self.extra_feature():
