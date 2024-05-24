@@ -5,6 +5,8 @@
 from __future__ import division
 from __future__ import print_function
 
+import copy
+
 import numpy as np
 import pandas as pd
 
@@ -695,6 +697,21 @@ class If(ExpressionOps):
         series = pd.Series(np.where(series_cond, series_left, series_right), index=series_cond.index)
         return series
 
+    def _load_internal_frame(self, instruments, dataframe):
+        series_cond = self.condition.load_dataframe(instruments, dataframe)
+        if isinstance(self.feature_left, (Expression,)):
+            series_left = self.feature_left.load_dataframe(instruments, dataframe)
+        else:
+            series_left = self.feature_left
+
+        if isinstance(self.feature_right, (Expression,)):
+            series_right = self.feature_right.load_dataframe(instruments, dataframe)
+        else:
+            series_right = self.feature_right
+
+        series = pd.Series(np.where(series_cond, series_left, series_right), index=series_cond.index)
+        return series
+
     def get_longest_back_rolling(self):
         if isinstance(self.feature_left, (Expression,)):
             left_br = self.feature_left.get_longest_back_rolling()
@@ -934,6 +951,27 @@ class Sum(Rolling):
 
     def __init__(self, feature, N):
         super(Sum, self).__init__(feature, N, "sum")
+
+
+class Sma(Rolling):
+    def __init__(self, feature, N, M):
+        super().__init__(feature, N, "sum")
+        self.N = N
+        self.M = M
+
+    def _load_internal_frame(self, instruments, dataframe):
+        series = self.feature.load_dataframe(instruments, dataframe)
+        output = {}
+
+        for inst in instruments:
+            part_series = series.loc[(slice(None), inst)]
+            part_series.fillna(0, inplace=True)
+            out_series = copy.deepcopy(part_series)
+            for i in range(1, len(part_series)):
+                out_series[i] = (self.M * part_series.iloc[i] + (self.N - self.M) * out_series.iloc[i-1]) / self.N
+            output[inst] = out_series
+        out_series = pd.concat(output, names=["instrument"])
+        return out_series.swaplevel("datetime", "instrument")
 
 
 class Std(Rolling):
@@ -1350,6 +1388,16 @@ class Slope(Rolling):
             series = pd.Series(rolling_slope(series.values, self.N), index=series.index)
         return series
 
+    def _load_internal_frame(self, instruments, dataframe):
+        series = self.feature.load_dataframe(instruments, dataframe)
+        output = {}
+        for inst in instruments:
+            part_series = series.loc[(slice(None), inst)]
+            out_series = pd.Series(rolling_slope(part_series.values, self.N), index=part_series.index)
+            output[inst] = out_series
+        out_series = pd.concat(output, names=["instrument"])
+        return out_series.swaplevel("datetime", "instrument")
+
 
 class Rsquare(Rolling):
     """Rolling R-value Square
@@ -1442,6 +1490,22 @@ class WMA(Rolling):
         else:
             series = series.rolling(self.N, min_periods=1).apply(weighted_mean, raw=True)
         return series
+
+    def _load_internal_frame(self, instruments, dataframe):
+        series = self.feature.load_dataframe(instruments, dataframe)
+
+        def weighted_mean(x):
+            w = np.arange(len(x)) + 1
+            w = w / w.sum()
+            return np.nanmean(w * x)
+
+        output = {}
+        for inst in instruments:
+            part_series = series.loc[(slice(None), inst)]
+            out_series = part_series.rolling(self.N, min_periods=1).apply(weighted_mean, raw=True)
+            output[inst] = out_series
+        out_series = pd.concat(output, names=["instrument"])
+        return out_series.swaplevel("datetime", "instrument")
 
 
 class EMA(Rolling):
@@ -1698,6 +1762,7 @@ OpsList = [
               TSMax,
               TSMin,
               Sum,
+              Sma,
               Mean,
               Std,
               Var,
@@ -1786,6 +1851,7 @@ class OpsWrapper:
                     "The custom operator [{}] will override the qlib default definition".format(_ops_class.__name__)
                 )
             self._ops[_ops_class.__name__] = _ops_class
+            self._ops[_ops_class.__name__.upper()] = _ops_class
 
     def __getattr__(self, key):
         if key not in self._ops:
