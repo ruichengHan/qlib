@@ -102,8 +102,8 @@ def extra_feature():
         # ("099", "-1 * RANK(Cov(RANK($close), RANK($volume), 5))"),
         # ("100", "STD($volume,20)"),
         # ("101", "-1 * (RANK(CORR($close, SUM(MEAN($volume,30), 37), 15)) - RANK(CORR(RANK($high * 0.1 + $vwap * 0.9), RANK($volume), 11)))"),
-        # ("102", "SMA(Greater(Delta($volume, 1),0),6,1)/SMA(ABS(Delta($volume, 1)),6,1)*100"),
-        # ("116", "Slope($close,20)"),
+        ("102", "SMA(Greater(Delta($volume, 1),0),6,1)/SMA(ABS(Delta($volume, 1)),6,1)*100"),
+        ("116", "Slope($close,20)"),
         ("147", "Slope(Mean($close,12),12)")
     ]
 
@@ -162,10 +162,11 @@ class Alpha191Handler(DataHandlerLP):
         return ["$open", "$close", "$high", "$low", "$volume"], ["$open", "$close", "$high", "$low", "$volume"]
 
     def get_label_config(self):
-        return (["Ref($close, -2)/Ref($close, -1) - 1", "Ref($close, -3)/Ref($close, -1) - 1",
-                 "Ref($close, -4)/Ref($close, -1) - 1", "Ref($close, -5)/Ref($close, -1) - 1",
-                 "Ref($close, -6)/Ref($close, -1) - 1"],
-                ["LABEL0", "LABEL1", "LABEL2", "LABEL3", "LABEL4"])
+        # return (["Ref($close, -2)/Ref($close, -1) - 1", "Ref($close, -3)/Ref($close, -1) - 1",
+        #          "Ref($close, -4)/Ref($close, -1) - 1", "Ref($close, -5)/Ref($close, -1) - 1",
+        #          "Ref($close, -6)/Ref($close, -1) - 1"],
+        #         ["LABEL0", "LABEL1", "LABEL2", "LABEL3", "LABEL4"])
+        return (["Ref($close, -4)/Ref($close, -1) - 1"], ["LABEL0"])
 
     def fetch(
             self,
@@ -184,12 +185,42 @@ class Alpha191Handler(DataHandlerLP):
             squeeze=squeeze,
             proc_func=proc_func,
         )
-
-        if col_set == 'label':
-            return df
-
         instruments = df.index.levels[1].tolist()
 
+        arr = []
+        if 'feature' in col_set:
+            if col_set == "feature":
+                feature_df = self.process_feature(df, instruments)
+            else:
+                feature_df = self.process_feature(df["feature"], instruments)
+            arr.append(feature_df)
+        if 'label' in col_set:
+            if col_set == 'label':
+                label_df = df
+            else:
+                label_df = df["label"]
+            out_columns = list(map(lambda x: ("label", x), self.get_label_config()[1]))
+            label_df.columns = pd.MultiIndex.from_tuples(out_columns)
+
+            arr.append(label_df)
+
+        output_df = arr[0]
+        for part_df in arr[1:]:
+            output_df = output_df.join(part_df)
+        return output_df
+
+    def get_feature_path(self, name):
+        return self.base_path + "/" + name + '.bin'
+
+    def dump_series(self, name, series: pd.Series):
+        series.to_pickle(self.get_feature_path(name))
+
+    def load_series(self, name):
+        path = self.get_feature_path(name)
+        if os.path.exists(path):
+            return pd.read_pickle(path)
+
+    def process_feature(self, df, instruments):
         df['$vwap'] = (df["$high"] * 2 + df["$low"] * 2 + df["$close"] + df["$open"]) / 6
         output_df = pd.DataFrame()
         provider = LocalExpressionProvider()
@@ -210,16 +241,4 @@ class Alpha191Handler(DataHandlerLP):
         out_columns = list(map(lambda x: ("feature", x[0]), extra_feature()))
 
         output_df.columns = pd.MultiIndex.from_tuples(out_columns)
-
         return output_df
-
-    def get_feature_path(self, name):
-        return self.base_path + "/" + name + '.bin'
-
-    def dump_series(self, name, series: pd.Series):
-        series.to_pickle(self.get_feature_path(name))
-
-    def load_series(self, name):
-        path = self.get_feature_path(name)
-        if os.path.exists(path):
-            return pd.read_pickle(path)
