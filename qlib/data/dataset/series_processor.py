@@ -38,3 +38,6 @@ class ZScoreSProcessor(SeriesProcessor):
         part_series = (series - mean) / std
         return part_series
 
+    def __str__(self):
+        return f"ZScoreProcessor start time = f{self.start_time} end time = f{self.end_time}"
+
