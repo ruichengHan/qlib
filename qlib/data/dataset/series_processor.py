@@ -41,3 +41,14 @@ class ZScoreSProcessor(SeriesProcessor):
     def __str__(self):
         return f"ZScoreProcessor start time = f{self.start_time} end time = f{self.end_time}"
 
+
+class Fillna(SeriesProcessor):
+    """Process NaN"""
+
+    def __init__(self, fields_group=None, fill_value=0):
+        self.fields_group = fields_group
+        self.fill_value = fill_value
+
+    def fit(self, series: pd.Series):
+        series.fillna(self.fill_value, inplace=True)
+        return series

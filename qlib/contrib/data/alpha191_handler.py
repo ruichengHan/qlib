@@ -7,7 +7,7 @@ import time
 from qlib.typehint import Literal
 from ...data.data import LocalExpressionProvider
 from ...data.dataset.handler import DataHandlerLP, DataHandler
-from ...data.dataset.series_processor import MinMaxSProcessor, ZScoreSProcessor
+from ...data.dataset.series_processor import MinMaxSProcessor, ZScoreSProcessor, Fillna
 from ...config import C
 
 DATA_KEY_TYPE = Literal["raw", "infer", "learn"]
@@ -85,7 +85,9 @@ feature_map = {"001": "-1 * Corr(Rank(Delta(Log($volume), 1)), Rank(($close - $o
                "100": "STD($volume,20)",
                "101": "-1 * (RANK(CORR($close, SUM(MEAN($volume,30), 37), 15)) - RANK(CORR(RANK($high * 0.1 + $vwap * 0.9), RANK($volume), 11)))",
                "102": "SMA(Greater(Delta($volume, 1),0),6,1)/SMA(ABS(Delta($volume, 1)),6,1)*100",
-               "116": "Slope($close,20)", "147": "Slope(Mean($close,12),12)"}
+               "116": "Slope($close,20)",
+               "147": "Slope(Mean($close,12),12)"
+               }
 
 
 class Alpha191Handler(DataHandlerLP):
@@ -103,8 +105,8 @@ class Alpha191Handler(DataHandlerLP):
                  filter_pipe=None,
                  inst_processors=None,
                  **kwargs):
-        infer_processors = []
-        learn_processors = []
+        infer_processors = [] if infer_processors is None else infer_processors
+        learn_processors = [] if learn_processors is None else learn_processors
 
         data_loader = {
             "class": "QlibDataLoader",
@@ -119,7 +121,8 @@ class Alpha191Handler(DataHandlerLP):
             },
         }
         self.features = kwargs.get("features", None)
-        kwargs.pop("features")
+        if 'features' in kwargs:
+            kwargs.pop("features", None)
         super().__init__(
             instruments=instruments,
             start_time=start_time,
@@ -132,14 +135,13 @@ class Alpha191Handler(DataHandlerLP):
         )
         self.base_path = C.get("provider_uri")["__DEFAULT_FREQ"] + "/ht191"
 
-
-
         self.norm_map = {
             "067": [ZScoreSProcessor(fit_start_time, fit_end_time)],
             "084": [MinMaxSProcessor(-25, 25)],
             "088": [MinMaxSProcessor(-1, 1)],
             "116": [MinMaxSProcessor(-5, 5)],
-            "147": [MinMaxSProcessor(-5, 5)]
+            "147": [MinMaxSProcessor(-5, 5)],
+            "042": [Fillna(0)]
         }
 
     def get_feature_config(self):
@@ -183,6 +185,7 @@ class Alpha191Handler(DataHandlerLP):
                 label_df = df
             else:
                 label_df = df["label"]
+            label_df.fillna(0, inplace=True)
             out_columns = list(map(lambda x: ("label", x), self.get_label_config()[1]))
             label_df.columns = pd.MultiIndex.from_tuples(out_columns)
 
@@ -191,6 +194,10 @@ class Alpha191Handler(DataHandlerLP):
         output_df = arr[0]
         for part_df in arr[1:]:
             output_df = output_df.join(part_df)
+
+        start_condition = output_df.index.get_level_values("datetime") >= selector[0]
+        end_condition = output_df.index.get_level_values("datetime") < selector[1]
+        output_df = output_df[start_condition & end_condition]
         return output_df
 
     def get_feature_path(self, name):
@@ -217,7 +224,6 @@ class Alpha191Handler(DataHandlerLP):
                 series.sort_index(inplace=True)
                 processers = self.norm_map.get(name, [])
                 for p in processers:
-                    print(name, p)
                     series = p.fit(series)
                 self.dump_series(name, series)
             output_df[name] = series
