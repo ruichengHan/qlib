@@ -88,7 +88,6 @@ class TopkDropoutStrategy(BaseSignalStrategy):
             hold_thresh=5,
             only_tradable=True,
             forbid_all_trade_at_limit=True,
-            step_index=0,
             **kwargs,
     ):
         """
@@ -135,13 +134,10 @@ class TopkDropoutStrategy(BaseSignalStrategy):
         self.hold_thresh = hold_thresh
         self.only_tradable = only_tradable
         self.forbid_all_trade_at_limit = forbid_all_trade_at_limit
-        self.step_index = step_index
 
     def generate_trade_decision(self, execute_result=None):
         # get the number of trading step finished, trade_step can be [0, 1, 2, ..., trade_len - 1]
         trade_step = self.trade_calendar.get_trade_step()
-        if trade_step % 5 != self.step_index:
-            return TradeDecisionWO([], self)
         trade_start_time, trade_end_time = self.trade_calendar.get_step_time(trade_step)
         pred_start_time, pred_end_time = self.trade_calendar.get_step_time(trade_step, shift=1)
         pred_score = self.signal.get_signal(start_time=pred_start_time, end_time=pred_end_time)
